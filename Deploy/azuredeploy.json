@@ -16,7 +16,7 @@
       }
     },
     "ADXDatabaseName":{
-      "defaultValue": "[parameters('ADXDatabaseName')]",
+      "defaultValue": "adxdata001",
       "type": "string",
       "metadata": {
           "description": "Your ADXDatabaseName"
