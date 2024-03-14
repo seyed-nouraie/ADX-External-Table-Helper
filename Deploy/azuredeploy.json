@@ -56,157 +56,258 @@
           },
           "actions": {
             "Create_Partition_Tables": {
-              "foreach": "@body('Parse_External_Tables')",
-              "actions": {
-                "Create_Tables": {
-                  "foreach": "@body('Parse_Schema')",
-                  "actions": {
-                    "Create_Day_Table": {
-                      "runAfter": {
-                        "Create_Hour_Table": [
-                          "Succeeded"
-                        ]
-                      },
-                      "type": "ApiConnection",
-                      "inputs": {
-                        "body": {
-                          "chartType": "Bar Chart",
-                          "cluster": "[parameters('ADXClusterURI')]",
-                          "csl": ".create-or-alter external table ['@{items('Create_Partition_Tables')['TableName_Days']}'](@{items('Create_Tables')['schema']})\nkind = storage\npartition by (IngestTime:datetime)\npathformat = (datetime_pattern('@{items('Create_Partition_Tables')['PathFormat_Days']}', IngestTime))\ndataformat = @{items('Create_Partition_Tables')['Format']}\n(\nh@'@{items('Create_Partition_Tables')['ConnectionString']}'\n)",
-                          "db": "[parameters('ADXDatabaseName')]"
+                "actions": {
+                    "Create_Tables": {
+                        "actions": {
+                            "Condition": {
+                                "actions": {
+                                    "Set_variable": {
+                                        "inputs": {
+                                            "name": "timeField",
+                                            "value": "TimeGenerated"
+                                        },
+                                        "runAfter": {},
+                                        "type": "SetVariable"
+                                    }
+                                },
+                                "else": {
+                                    "actions": {
+                                        "Condition_2": {
+                                            "actions": {
+                                                "Set_variable_2": {
+                                                    "inputs": {
+                                                        "name": "timeField",
+                                                        "value": "rt"
+                                                    },
+                                                    "runAfter": {},
+                                                    "type": "SetVariable"
+                                                }
+                                            },
+                                            "else": {
+                                                "actions": {
+                                                    "Condition_3": {
+                                                        "actions": {
+                                                            "Set_variable_3": {
+                                                                "inputs": {
+                                                                    "name": "timeField",
+                                                                    "value": "['time']"
+                                                                },
+                                                                "runAfter": {},
+                                                                "type": "SetVariable"
+                                                            }
+                                                        },
+                                                        "expression": {
+                                                            "and": [
+                                                                {
+                                                                    "contains": [
+                                                                        "@items('Create_Tables')['schema']",
+                                                                        "['time']:datetime"
+                                                                    ]
+                                                                }
+                                                            ]
+                                                        },
+                                                        "runAfter": {},
+                                                        "type": "If"
+                                                    }
+                                                }
+                                            },
+                                            "expression": {
+                                                "and": [
+                                                    {
+                                                        "contains": [
+                                                            "@items('Create_Tables')['schema']",
+                                                            "['rt']:datetime"
+                                                        ]
+                                                    }
+                                                ]
+                                            },
+                                            "runAfter": {},
+                                            "type": "If"
+                                        }
+                                    }
+                                },
+                                "expression": {
+                                    "and": [
+                                        {
+                                            "contains": [
+                                                "@items('Create_Tables')['schema']",
+                                                "['TimeGenerated']:datetime"
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "runAfter": {},
+                                "type": "If"
+                            },
+                            "Create_Day_Table": {
+                                "inputs": {
+                                    "body": {
+                                        "chartType": "Bar Chart",
+                                        "cluster": "https://adxcompc1001.centralus.kusto.windows.net/",
+                                        "csl": ".create-or-alter external table ['@{items('Create_Partition_Tables')['TableName_Days']}'](@{items('Create_Tables')['schema']})\nkind = storage\npartition by (IngestTime:datetime)\npathformat = (datetime_pattern('@{items('Create_Partition_Tables')['PathFormat_Days']}', IngestTime))\ndataformat = @{items('Create_Partition_Tables')['Format']}\n(\nh@'@{items('Create_Partition_Tables')['ConnectionString']}'\n)",
+                                        "db": "adxdata001"
+                                    },
+                                    "host": {
+                                        "connection": {
+                                            "name": "@parameters('$connections')['azuredataexplorer']['connectionId']"
+                                        }
+                                    },
+                                    "method": "post",
+                                    "path": "/RunKustoAndVisualizeResults/true"
+                                },
+                                "runAfter": {
+                                    "Create_Hour_Table": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "ApiConnection"
+                            },
+                            "Create_Function": {
+                                "inputs": {
+                                    "body": {
+                                        "chartType": "Bar Chart",
+                                        "cluster": "https://adxcompc1001.centralus.kusto.windows.net/",
+                                        "csl": ".create-or-alter function \n    with (docstring = 'Calling underlying bucket', folder='Partitioning',skipvalidation=True)\n    ['@{items('Create_Partition_Tables')['TableName']}'](starttime: datetime, endtime: datetime) {\n     let span = endtime - starttime;\n     let partition = case(span > 300d, \"Years\", span > 10d, \"Months\", span > 10h, \"Days\", span > 10m, \"Hours\", \"Minutes\");\n     union\n        (\n        external_table('@{items('Create_Partition_Tables')['TableName_Months']}')\n        | where partition == \"Months\"\n        | where IngestTime between(startofmonth(starttime,-1) .. endtime)\n        | where @{variables('timeField')}between(starttime.. endtime)),\n        (\n        external_table('@{items('Create_Partition_Tables')['TableName_Days']}')\n        | where partition == \"Days\"\n        | where IngestTime between(startofday(starttime,-1) .. endtime)\n        | where @{variables('timeField')}between(starttime.. endtime)),\n        (\n        external_table('@{items('Create_Partition_Tables')['TableName_Hours']}')\n        | where partition == \"Hours\"\n        | where IngestTime between((bin(starttime,1h)-1h) .. endtime)\n        | where @{variables('timeField')}between(starttime.. endtime)),\n        (\n        external_table('@{items('Create_Partition_Tables')['TableName']}')\n        | where partition == \"Minutes\"\n        | where IngestTime between(starttime .. endtime)\n        | where @{variables('timeField')}between(starttime.. endtime))\n }",
+                                        "db": "adxdata001"
+                                    },
+                                    "host": {
+                                        "connection": {
+                                            "name": "@parameters('$connections')['azuredataexplorer']['connectionId']"
+                                        }
+                                    },
+                                    "method": "post",
+                                    "path": "/RunKustoAndVisualizeResults/true"
+                                },
+                                "runAfter": {
+                                    "Create_Month_Table": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "ApiConnection"
+                            },
+                            "Create_Hour_Table": {
+                                "inputs": {
+                                    "body": {
+                                        "chartType": "Bar Chart",
+                                        "cluster": "https://adxcompc1001.centralus.kusto.windows.net/",
+                                        "csl": ".create-or-alter external table ['@{items('Create_Partition_Tables')['TableName_Hours']}'](@{items('Create_Tables')['schema']})\nkind = storage\npartition by (IngestTime:datetime)\npathformat = (datetime_pattern('@{items('Create_Partition_Tables')['PathFormat_Hours']}', IngestTime))\ndataformat = @{items('Create_Partition_Tables')['Format']}\n(\nh@'@{items('Create_Partition_Tables')['ConnectionString']}'\n)",
+                                        "db": "adxdata001"
+                                    },
+                                    "host": {
+                                        "connection": {
+                                            "name": "@parameters('$connections')['azuredataexplorer']['connectionId']"
+                                        }
+                                    },
+                                    "method": "post",
+                                    "path": "/RunKustoAndVisualizeResults/true"
+                                },
+                                "runAfter": {
+                                    "Condition": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "ApiConnection"
+                            },
+                            "Create_Month_Table": {
+                                "inputs": {
+                                    "body": {
+                                        "chartType": "Bar Chart",
+                                        "cluster": "https://adxcompc1001.centralus.kusto.windows.net/",
+                                        "csl": ".create-or-alter external table ['@{items('Create_Partition_Tables')['TableName_Months']}'](@{items('Create_Tables')['schema']})\nkind = storage\npartition by (IngestTime:datetime)\npathformat = (datetime_pattern('@{items('Create_Partition_Tables')['PathFormat_Months']}', IngestTime))\ndataformat = @{items('Create_Partition_Tables')['Format']}\n(\nh@'@{items('Create_Partition_Tables')['ConnectionString']}'\n)",
+                                        "db": "adxdata001"
+                                    },
+                                    "host": {
+                                        "connection": {
+                                            "name": "@parameters('$connections')['azuredataexplorer']['connectionId']"
+                                        }
+                                    },
+                                    "method": "post",
+                                    "path": "/RunKustoAndVisualizeResults/true"
+                                },
+                                "runAfter": {
+                                    "Create_Day_Table": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "ApiConnection"
+                            }
                         },
-                        "host": {
-                          "connection": {
-                            "name": "@parameters('$connections')['azuredataexplorer']['connectionId']"
-                          }
+                        "foreach": "@body('Parse_Schema')",
+                        "runAfter": {
+                            "Parse_Schema": [
+                                "Succeeded"
+                            ]
                         },
-                        "method": "post",
-                        "path": "/RunKustoAndVisualizeResults/true"
-                      }
+                        "type": "Foreach"
                     },
-                    "Create_Function": {
-                      "runAfter": {
-                        "Create_Month_Table": [
-                          "Succeeded"
-                        ]
-                      },
-                      "type": "ApiConnection",
-                      "inputs": {
-                        "body": {
-                          "chartType": "Bar Chart",
-                          "cluster": "[parameters('ADXClusterURI')]",
-                          "csl": ".create-or-alter function \n    with (docstring = 'Calling underlying bucket', folder='Partitioning',skipvalidation=True)\n    ['@{items('Create_Partition_Tables')['TableName']}'](starttime: datetime, endtime: datetime) {\n     let span = endtime - starttime;\n     let partition = case(span > 300d, \"Years\", span > 10d, \"Months\", span > 10h, \"Days\", span > 10m, \"Hours\", \"Minutes\");\n     union\n        (\n        external_table(@{items('Create_Partition_Tables')['TableName_Months']})\n        | where partition == \"Months\"\n        | where IngestTime between(startofmonth(starttime,-1) .. endtime)\n        | where TimeGenerated between(starttime.. endtime)),\n        (\n        external_table(@{items('Create_Partition_Tables')['TableName_Days']})\n        | where partition == \"Days\"\n        | where IngestTime between(startofday(starttime,-1) .. endtime)\n        | where TimeGenerated between(starttime.. endtime)),\n        (\n        external_table(@{items('Create_Partition_Tables')['TableName_Hours']})\n        | where partition == \"Hours\"\n        | where IngestTime between((bin(starttime,1h)-1h) .. endtime)\n        | where TimeGenerated between(starttime.. endtime)),\n        (\n        external_table(@{items('Create_Partition_Tables')['TableName']})\n        | where partition == \"Minutes\"\n        | where IngestTime between(starttime .. endtime)\n        | where TimeGenerated between(starttime.. endtime))\n }",
-                          "db": "[parameters('ADXDatabaseName')]"
+                    "Get_Schema": {
+                        "inputs": {
+                            "body": {
+                                "cluster": "https://adxcompc1001.centralus.kusto.windows.net/",
+                                "csl": "external_table(\"@{items('Create_Partition_Tables')['TableName']}\")\n| getschema\n| extend value = strcat(\"['\", ColumnName, \"']\", \":\", ColumnType)\n| summarize schema=make_set(value)\n| project schema = replace_string(tostring(schema), '\"', \"\")\n| project schema = replace_string(tostring(schema), \",['IngestTime']:datetime\", \"\")\n| project schema = substring(schema, 1,strlen(schema)-2)",
+                                "db": "adxdata001"
+                            },
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['azuredataexplorer']['connectionId']"
+                                }
+                            },
+                            "method": "post",
+                            "path": "/ListKustoResults/false"
                         },
-                        "host": {
-                          "connection": {
-                            "name": "@parameters('$connections')['azuredataexplorer']['connectionId']"
-                          }
-                        },
-                        "method": "post",
-                        "path": "/RunKustoAndVisualizeResults/true"
-                      }
+                        "runAfter": {},
+                        "type": "ApiConnection"
                     },
-                    "Create_Hour_Table": {
-                      "runAfter": {},
-                      "type": "ApiConnection",
-                      "inputs": {
-                        "body": {
-                          "chartType": "Bar Chart",
-                          "cluster": "[parameters('ADXClusterURI')]",
-                          "csl": ".create-or-alter external table ['@{items('Create_Partition_Tables')['TableName_Hours']}'](@{items('Create_Tables')['schema']})\nkind = storage\npartition by (IngestTime:datetime)\npathformat = (datetime_pattern('@{items('Create_Partition_Tables')['PathFormat_Hours']}', IngestTime))\ndataformat = @{items('Create_Partition_Tables')['Format']}\n(\nh@'@{items('Create_Partition_Tables')['ConnectionString']}'\n)",
-                          "db": "[parameters('ADXDatabaseName')]"
+                    "Parse_Schema": {
+                        "inputs": {
+                            "content": "@body('Get_Schema')?['value']",
+                            "schema": {
+                                "items": {
+                                    "properties": {
+                                        "schema": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "schema"
+                                    ],
+                                    "type": "object"
+                                },
+                                "type": "array"
+                            }
                         },
-                        "host": {
-                          "connection": {
-                            "name": "@parameters('$connections')['azuredataexplorer']['connectionId']"
-                          }
+                        "runAfter": {
+                            "Get_Schema": [
+                                "Succeeded"
+                            ]
                         },
-                        "method": "post",
-                        "path": "/RunKustoAndVisualizeResults/true"
-                      }
-                    },
-                    "Create_Month_Table": {
-                      "runAfter": {
-                        "Create_Day_Table": [
-                          "Succeeded"
-                        ]
-                      },
-                      "type": "ApiConnection",
-                      "inputs": {
-                        "body": {
-                          "chartType": "Bar Chart",
-                          "cluster": "[parameters('ADXClusterURI')]",
-                          "csl": ".create-or-alter external table ['@{items('Create_Partition_Tables')['TableName_Months']}'](@{items('Create_Tables')['schema']})\nkind = storage\npartition by (IngestTime:datetime)\npathformat = (datetime_pattern('@{items('Create_Partition_Tables')['PathFormat_Months']}', IngestTime))\ndataformat = @{items('Create_Partition_Tables')['Format']}\n(\nh@'@{items('Create_Partition_Tables')['ConnectionString']}'\n)",
-                          "db": "[parameters('ADXDatabaseName')]"
-                        },
-                        "host": {
-                          "connection": {
-                            "name": "@parameters('$connections')['azuredataexplorer']['connectionId']"
-                          }
-                        },
-                        "method": "post",
-                        "path": "/RunKustoAndVisualizeResults/true"
-                      }
+                        "type": "ParseJson"
                     }
-                  },
-                  "runAfter": {
-                    "Parse_Schema": [
-                      "Succeeded"
-                    ]
-                  },
-                  "type": "Foreach"
                 },
-                "Get_Schema": {
-                  "runAfter": {},
-                  "type": "ApiConnection",
-                  "inputs": {
-                    "body": {
-                      "cluster": "[parameters('ADXClusterURI')]",
-                      "csl": "external_table(\"@{items('Create_Partition_Tables')['TableName']}\")\n| getschema\n| extend value = strcat(\"['\", ColumnName, \"']\", \":\", ColumnType)\n| summarize schema=make_set(value)\n| project schema = replace_string(tostring(schema), '\"', \"\")\n| project schema = replace_string(tostring(schema), \",['IngestTime']:datetime\", \"\")\n| project schema = substring(schema, 1,strlen(schema)-2)",
-                      "db": "[parameters('ADXDatabaseName')]"
-                    },
-                    "host": {
-                      "connection": {
-                        "name": "@parameters('$connections')['azuredataexplorer']['connectionId']"
-                      }
-                    },
-                    "method": "post",
-                    "path": "/ListKustoResults/false"
-                  }
-                },
-                "Parse_Schema": {
-                  "runAfter": {
-                    "Get_Schema": [
-                      "Succeeded"
+                "foreach": "@body('Parse_External_Tables')",
+                "runAfter": {
+                    "Initialize_variable": [
+                        "Succeeded"
                     ]
-                  },
-                  "type": "ParseJson",
-                  "inputs": {
-                    "content": "@body('Get_Schema')?['value']",
-                    "schema": {
-                      "items": {
-                        "properties": {
-                          "schema": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "schema"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    }
-                  }
-                }
-              },
-              "runAfter": {
-                "Parse_External_Tables": [
-                  "Succeeded"
-                ]
-              },
-              "type": "Foreach"
+                },
+                "type": "Foreach"
+            },
+            "Initialize_variable": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "timeField",
+                            "type": "string",
+                            "value": "TimeGenerated"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Parse_External_Tables": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
             },
             "List_External_Tables": {
               "runAfter": {},
