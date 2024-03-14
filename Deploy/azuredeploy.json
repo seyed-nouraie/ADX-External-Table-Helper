@@ -16,7 +16,7 @@
       }
     },
     "ADXDatabaseName":{
-      "defaultValue": "adxdata001",
+      "defaultValue": "[parameters('ADXDatabaseName')]",
       "type": "string",
       "metadata": {
           "description": "Your ADXDatabaseName"
@@ -143,9 +143,9 @@
                                 "inputs": {
                                     "body": {
                                         "chartType": "Bar Chart",
-                                        "cluster": "https://adxcompc1001.centralus.kusto.windows.net/",
+                                        "cluster": "[parameters('ADXClusterURI')]",
                                         "csl": ".create-or-alter external table ['@{items('Create_Partition_Tables')['TableName_Days']}'](@{items('Create_Tables')['schema']})\nkind = storage\npartition by (IngestTime:datetime)\npathformat = (datetime_pattern('@{items('Create_Partition_Tables')['PathFormat_Days']}', IngestTime))\ndataformat = @{items('Create_Partition_Tables')['Format']}\n(\nh@'@{items('Create_Partition_Tables')['ConnectionString']}'\n)",
-                                        "db": "adxdata001"
+                                        "db": "[parameters('ADXDatabaseName')]"
                                     },
                                     "host": {
                                         "connection": {
@@ -166,9 +166,9 @@
                                 "inputs": {
                                     "body": {
                                         "chartType": "Bar Chart",
-                                        "cluster": "https://adxcompc1001.centralus.kusto.windows.net/",
+                                        "cluster": "[parameters('ADXClusterURI')]",
                                         "csl": ".create-or-alter function \n    with (docstring = 'Calling underlying bucket', folder='Partitioning',skipvalidation=True)\n    ['@{items('Create_Partition_Tables')['TableName']}'](starttime: datetime, endtime: datetime) {\n     let span = endtime - starttime;\n     let partition = case(span > 300d, \"Years\", span > 10d, \"Months\", span > 10h, \"Days\", span > 10m, \"Hours\", \"Minutes\");\n     union\n        (\n        external_table('@{items('Create_Partition_Tables')['TableName_Months']}')\n        | where partition == \"Months\"\n        | where IngestTime between(startofmonth(starttime,-1) .. endtime)\n        | where @{variables('timeField')} between(starttime.. endtime)),\n        (\n        external_table('@{items('Create_Partition_Tables')['TableName_Days']}')\n        | where partition == \"Days\"\n        | where IngestTime between(startofday(starttime,-1) .. endtime)\n        | where @{variables('timeField')} between(starttime.. endtime)),\n        (\n        external_table('@{items('Create_Partition_Tables')['TableName_Hours']}')\n        | where partition == \"Hours\"\n        | where IngestTime between((bin(starttime,1h)-1h) .. endtime)\n        | where @{variables('timeField')} between(starttime.. endtime)),\n        (\n        external_table('@{items('Create_Partition_Tables')['TableName']}')\n        | where partition == \"Minutes\"\n        | where IngestTime between(starttime .. endtime)\n        | where @{variables('timeField')} between(starttime.. endtime))\n }",
-                                        "db": "adxdata001"
+                                        "db": "[parameters('ADXDatabaseName')]"
                                     },
                                     "host": {
                                         "connection": {
@@ -189,9 +189,9 @@
                                 "inputs": {
                                     "body": {
                                         "chartType": "Bar Chart",
-                                        "cluster": "https://adxcompc1001.centralus.kusto.windows.net/",
+                                        "cluster": "[parameters('ADXClusterURI')]",
                                         "csl": ".create-or-alter external table ['@{items('Create_Partition_Tables')['TableName_Hours']}'](@{items('Create_Tables')['schema']})\nkind = storage\npartition by (IngestTime:datetime)\npathformat = (datetime_pattern('@{items('Create_Partition_Tables')['PathFormat_Hours']}', IngestTime))\ndataformat = @{items('Create_Partition_Tables')['Format']}\n(\nh@'@{items('Create_Partition_Tables')['ConnectionString']}'\n)",
-                                        "db": "adxdata001"
+                                        "db": "[parameters('ADXDatabaseName')]"
                                     },
                                     "host": {
                                         "connection": {
@@ -212,9 +212,9 @@
                                 "inputs": {
                                     "body": {
                                         "chartType": "Bar Chart",
-                                        "cluster": "https://adxcompc1001.centralus.kusto.windows.net/",
+                                        "cluster": "[parameters('ADXClusterURI')]",
                                         "csl": ".create-or-alter external table ['@{items('Create_Partition_Tables')['TableName_Months']}'](@{items('Create_Tables')['schema']})\nkind = storage\npartition by (IngestTime:datetime)\npathformat = (datetime_pattern('@{items('Create_Partition_Tables')['PathFormat_Months']}', IngestTime))\ndataformat = @{items('Create_Partition_Tables')['Format']}\n(\nh@'@{items('Create_Partition_Tables')['ConnectionString']}'\n)",
-                                        "db": "adxdata001"
+                                        "db": "[parameters('ADXDatabaseName')]"
                                     },
                                     "host": {
                                         "connection": {
@@ -243,9 +243,9 @@
                     "Get_Schema": {
                         "inputs": {
                             "body": {
-                                "cluster": "https://adxcompc1001.centralus.kusto.windows.net/",
+                                "cluster": "[parameters('ADXClusterURI')]",
                                 "csl": "external_table(\"@{items('Create_Partition_Tables')['TableName']}\")\n| getschema\n| extend value = strcat(\"['\", ColumnName, \"']\", \":\", ColumnType)\n| summarize schema=make_set(value)\n| project schema = replace_string(tostring(schema), '\"', \"\")\n| project schema = replace_string(tostring(schema), \",['IngestTime']:datetime\", \"\")\n| project schema = substring(schema, 1,strlen(schema)-2)",
-                                "db": "adxdata001"
+                                "db": "[parameters('ADXDatabaseName')]"
                             },
                             "host": {
                                 "connection": {
